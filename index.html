@@ -1,101 +1,141 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Auth via iframe + postMessage</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mindshare Auth</title>
+<style>
+body {
+  font-family: sans-serif;
+  text-align: center;
+  margin: 0;
+  padding: 50px;
+  background: #f0f0f0;
+}
+input {
+  padding: 10px;
+  font-size: 16px;
+  margin: 10px 0;
+  width: 250px;
+}
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+#message {
+  margin-top: 20px;
+  font-weight: bold;
+}
+</style>
 </head>
 <body>
-  <h3>Login (iframe + postMessage)</h3>
+  <main>
+    <h2>Вход в систему</h2>
+    <input type="text" id="login" placeholder="Введите логин">
+    <button id="checkBtn">Проверить</button>
 
-  <input id="login" placeholder="логин" />
-  <button id="checkBtn">Проверить</button>
+    <div id="passwordSection" style="display:none;">
+      <input type="password" id="password" placeholder="Введите пароль">
+      <button id="submitBtn">Войти</button>
+    </div>
 
-  <div id="passwordSection" style="display:none;">
-    <input id="password" type="password" placeholder="пароль" />
-    <button id="submitBtn">Отправить</button>
-  </div>
+    <p id="message"></p>
+  </main>
 
-  <div id="msg"></div>
-
-  <!-- скрытый iframe -->
-  <iframe id="proxyFrame" name="proxyFrame" style="display:none;"></iframe>
+  <!-- Скрытый iframe для обхода CORS -->
+  <iframe id="authFrame" style="display:none;"></iframe>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyJMqpLxzA2UpiWalvD0h_JL5bIflIPipn-0B78YOT0I3qNzuPWcywy3rBRw6tQLJoe/exec'; // подставь свой
-const ORIGIN = location.origin; // origin страницы на GitHub, проверяем при получении postMessage
+const AUTH_URL = "https://script.google.com/macros/s/AKfycbyJMqpLxzA2UpiWalvD0h_JL5bIflIPipn-0B78YOT0I3qNzuPWcywy3rBRw6tQLJoe/exec";
 
-const loginInput = document.getElementById('login');
-const checkBtn = document.getElementById('checkBtn');
-const passwordSection = document.getElementById('passwordSection');
-const passwordInput = document.getElementById('password');
-const submitBtn = document.getElementById('submitBtn');
-const msg = document.getElementById('msg');
+const loginInput = document.getElementById("login");
+const checkBtn = document.getElementById("checkBtn");
+const passwordSection = document.getElementById("passwordSection");
+const passwordInput = document.getElementById("password");
+const submitBtn = document.getElementById("submitBtn");
+const message = document.getElementById("message");
+const iframe = document.getElementById("authFrame");
 
-let currentLogin = '';
+let currentLogin = "";
 let isNewUser = false;
 
-// слушаем сообщения от iframe
-window.addEventListener('message', (ev) => {
-  // проверка источника — важно
-  if (ev.origin !== new URL(GAS_URL).origin && ev.origin !== 'https://script.google.com') {
-    console.warn('Ignored message from', ev.origin);
-    return;
+// Слушаем postMessage из iframe
+window.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "authResponse") {
+    handleAuthResponse(e.data.data);
   }
-
-  // ожидаем структуру: { type: 'authResponse', data: { ... } }
-  const payload = ev.data;
-  if (!payload || payload.type !== 'authResponse') return;
-
-  const data = payload.data;
-  if (data.status === 'not_found') {
-    msg.textContent = 'Пользователь не найден';
-    passwordSection.style.display = 'none';
-    return;
-  }
-  currentLogin = loginInput.value.trim();
-  isNewUser = data.status === 'new_user';
-  passwordSection.style.display = 'block';
-  submitBtn.textContent = isNewUser ? 'Создать пароль' : 'Войти';
-  msg.textContent = isNewUser ? 'Придумайте пароль' : 'Введите пароль';
 });
-
-// helper: сабмит формы в iframe
-function postToGAS(payload) {
-  // создаём форму динамически, сабмитим в iframe
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = GAS_URL;
-  form.target = 'proxyFrame';
-  // добавляем поле JSON (GAS будет читать e.postData.contents или form data)
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = 'payload';
-  input.value = JSON.stringify(payload);
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
-  // удаляем форму через секунду
-  setTimeout(() => form.remove(), 1500);
-}
 
 // Проверка логина
 checkBtn.onclick = () => {
   const login = loginInput.value.trim();
-  if (!login) return alert('Введите логин');
-  msg.textContent = 'Проверяем...';
-  // отправляем action: checkLogin, login
-  postToGAS({ action: 'checkLogin', login });
+  if (!login) return alert("Введите логин");
+  currentLogin = login;
+
+  sendToIframe({ action: "checkLogin", login });
+  message.textContent = "Проверяем...";
 };
 
-// отправка пароля или логина/пароля для входа
+// Установка пароля или вход
 submitBtn.onclick = () => {
   const password = passwordInput.value.trim();
-  if (!password) return alert('Введите пароль');
-  const action = isNewUser ? 'setPassword' : 'login';
-  msg.textContent = 'Отправляем...';
-  postToGAS({ action, login: currentLogin, password });
+  if (!password) return alert("Введите пароль");
+
+  const action = isNewUser ? "setPassword" : "login";
+  sendToIframe({ action, login: currentLogin, password });
+  message.textContent = "Обработка...";
 };
+
+// Отправка данных в iframe
+function sendToIframe(payload) {
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(`<form id="f" method="post" action="${AUTH_URL}"></form>`);
+  doc.close();
+  const f = doc.getElementById("f");
+
+  for (const key in payload) {
+    const input = doc.createElement("input");
+    input.name = key;
+    input.value = payload[key];
+    f.appendChild(input);
+  }
+
+  f.submit();
+}
+
+// Обработка ответа
+function handleAuthResponse(data) {
+  if (data.error) {
+    message.textContent = "Ошибка: " + data.error;
+    return;
+  }
+
+  if (data.status) {
+    if (data.status === "not_found") {
+      message.textContent = "Пользователь не найден ❌";
+      passwordSection.style.display = "none";
+    } else {
+      isNewUser = data.status === "new_user";
+      passwordSection.style.display = "block";
+      submitBtn.textContent = isNewUser ? "Установить пароль" : "Войти";
+      message.textContent = isNewUser
+        ? "Первый вход — придумайте пароль 🔒"
+        : "Введите пароль 🔑";
+    }
+  } else if (data.success !== undefined) {
+    if (data.success) {
+      message.textContent = "✅ Успешно";
+      localStorage.setItem("login", currentLogin);
+    } else {
+      message.textContent =
+        data.error === "wrong_password"
+          ? "❌ Неверный пароль"
+          : data.error || "⚠️ Ошибка";
+    }
+  }
+}
 </script>
 </body>
 </html>
