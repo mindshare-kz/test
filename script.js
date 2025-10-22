@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyTn_KsNLz8w0vjZ-gPlRNSjiN8G478OkJxURYm9VQBzTLEjmhmtqUHwTcEQWHU7umdiw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwELaIFgk_a83u2uxbxT2nfaHRuuVzVVUfzI2CunauNt2TsGsTxp6XPr-a3mgcmGkfEMQ/exec";
 const loginInput = document.getElementById("login");
 const checkBtn = document.getElementById("checkLogin");
 const passwordSection = document.getElementById("passwordSection");
