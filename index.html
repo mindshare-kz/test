@@ -1,22 +1,101 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Авторизация Mindshare Store</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Auth via iframe + postMessage</title>
 </head>
 <body>
-  <h2>Mindshare Store — вход</h2>
-  <div id="app">
-    <input id="login" type="text" placeholder="Введите логин">
-    <button id="checkLogin">Далее</button>
-    <div id="passwordSection" style="display:none;">
-      <input id="password" type="password" placeholder="Введите пароль">
-      <button id="submitBtn"></button>
-    </div>
-    <div id="message"></div>
+  <h3>Login (iframe + postMessage)</h3>
+
+  <input id="login" placeholder="логин" />
+  <button id="checkBtn">Проверить</button>
+
+  <div id="passwordSection" style="display:none;">
+    <input id="password" type="password" placeholder="пароль" />
+    <button id="submitBtn">Отправить</button>
   </div>
 
-  <script src="script.js"></script>
+  <div id="msg"></div>
+
+  <!-- скрытый iframe -->
+  <iframe id="proxyFrame" name="proxyFrame" style="display:none;"></iframe>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyJMqpLxzA2UpiWalvD0h_JL5bIflIPipn-0B78YOT0I3qNzuPWcywy3rBRw6tQLJoe/exec'; // подставь свой
+const ORIGIN = location.origin; // origin страницы на GitHub, проверяем при получении postMessage
+
+const loginInput = document.getElementById('login');
+const checkBtn = document.getElementById('checkBtn');
+const passwordSection = document.getElementById('passwordSection');
+const passwordInput = document.getElementById('password');
+const submitBtn = document.getElementById('submitBtn');
+const msg = document.getElementById('msg');
+
+let currentLogin = '';
+let isNewUser = false;
+
+// слушаем сообщения от iframe
+window.addEventListener('message', (ev) => {
+  // проверка источника — важно
+  if (ev.origin !== new URL(GAS_URL).origin && ev.origin !== 'https://script.google.com') {
+    console.warn('Ignored message from', ev.origin);
+    return;
+  }
+
+  // ожидаем структуру: { type: 'authResponse', data: { ... } }
+  const payload = ev.data;
+  if (!payload || payload.type !== 'authResponse') return;
+
+  const data = payload.data;
+  if (data.status === 'not_found') {
+    msg.textContent = 'Пользователь не найден';
+    passwordSection.style.display = 'none';
+    return;
+  }
+  currentLogin = loginInput.value.trim();
+  isNewUser = data.status === 'new_user';
+  passwordSection.style.display = 'block';
+  submitBtn.textContent = isNewUser ? 'Создать пароль' : 'Войти';
+  msg.textContent = isNewUser ? 'Придумайте пароль' : 'Введите пароль';
+});
+
+// helper: сабмит формы в iframe
+function postToGAS(payload) {
+  // создаём форму динамически, сабмитим в iframe
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = GAS_URL;
+  form.target = 'proxyFrame';
+  // добавляем поле JSON (GAS будет читать e.postData.contents или form data)
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'payload';
+  input.value = JSON.stringify(payload);
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+  // удаляем форму через секунду
+  setTimeout(() => form.remove(), 1500);
+}
+
+// Проверка логина
+checkBtn.onclick = () => {
+  const login = loginInput.value.trim();
+  if (!login) return alert('Введите логин');
+  msg.textContent = 'Проверяем...';
+  // отправляем action: checkLogin, login
+  postToGAS({ action: 'checkLogin', login });
+};
+
+// отправка пароля или логина/пароля для входа
+submitBtn.onclick = () => {
+  const password = passwordInput.value.trim();
+  if (!password) return alert('Введите пароль');
+  const action = isNewUser ? 'setPassword' : 'login';
+  msg.textContent = 'Отправляем...';
+  postToGAS({ action, login: currentLogin, password });
+};
+</script>
 </body>
 </html>
